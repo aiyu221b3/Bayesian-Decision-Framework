@@ -1,0 +1,6 @@
+# Supported interpreter: CPython 3.11.x (see .python-version)
+numpy==2.2.6
+matplotlib==3.10.7
+seaborn==0.13.2
+pytest==9.0.2
+hypothesis==6.112.1
