@@ -106,7 +106,7 @@ Demonstrated:
 - hierarchical stopping on real data
 - policy comparison across a 4-config ablation grid (`t_min`, `τ`)
 
-#### Real-Data Pilot Ablation Grid ($N=14$ Validation Sequences)
+#### Real-Data Pilot Ablation Grid (N=14 Validation Sequences)
 
 | Configuration | Method | Accuracy (%) | Mean Stop Frame | Mean Emissions |
 |---------------|--------|-------------:|----------------:|---------------:|
@@ -152,7 +152,7 @@ Across all four ablation configs, 55.6%-70.0% of BOCPD-triggered emissions beyon
 
 **Finding 4: The hierarchical policy's frame-0 commit has a root cause, not just a symptom.**
 Traced to source: under a uniform prior, coarse node `{0,1,4}` (specificity 0.50) starts with aggregate mass 0.6, which is already above the τ=0.50 threshold before any evidence is processed. This is a structural property of the threshold/prior combination, not a data artifact.
-*Why this does NOT affect the synthetic headline benchmark*: In the synthetic headline suite (`src/experiments.py`), the problem uses **$K=10$ classes**, **$\tau = 0.80$**, and **$\text{min\_sp} = 0.25$**. Under a uniform prior $b_0(k) = 0.10$, reaching $\tau = 0.80$ requires a coarse node with at least 8 leaves ($8 \times 0.10 = 0.80$). However, an 8-leaf node has specificity $\text{sp}(v) = \frac{10 - 8}{10 - 1} = \frac{2}{9} \approx 0.2222 < \text{min\_sp} = 0.25$. Therefore, instant frame-0 commitment under a uniform prior is mathematically excluded in the synthetic headline evaluation ($K=10$), confirming that instant commitment is an artifact of transferring $\tau=0.50 / \text{min\_sp}=0.25$ to a small-vocabulary ($K=5$) setting.
+*Why this does NOT affect the synthetic headline benchmark*: In the synthetic headline suite (`src/experiments.py`), the problem uses **10 classes (`K = 10`)**, threshold **`tau = 0.80`**, and minimum specificity threshold **`min_sp = 0.25`**. Under a uniform prior `b_0(k) = 0.10`, reaching `tau = 0.80` requires a coarse node with at least 8 leaves (`8 * 0.10 = 0.80`). However, an 8-leaf node has specificity `sp(v) = (10 - 8) / (10 - 1) = 2/9 ≈ 0.2222`, which is strictly less than `min_sp = 0.25`. Therefore, instant frame-0 commitment under a uniform prior is mathematically excluded in the synthetic headline evaluation (`K = 10`), confirming that instant commitment is an artifact of transferring `tau = 0.50` and `min_sp = 0.25` to a small-vocabulary (`K = 5`) setting.
 
 **Finding 5: The implementation was independently audited, and the audit caught a real bug.**
 Confirmed: architecture matches the M0-MT specification exactly at the constructor/parameter level; the full test suite (11 defect-remediation clauses, 9 preservation requirements) passes unmodified. The audit also caught a scoring artifact where a non-emitting policy was being credited with the classifier's final-frame accuracy as a fallback, inflating some ablation numbers (for example, M0 showed 64.3% "accuracy" at 0% emission rate). This was fixed and all four ablation configs re-scored. Catching and fixing this before submission is a strength of the process, not an admission the results were bad.
@@ -166,9 +166,9 @@ This repository is not intended as a state-of-the-art sign-language recognizer. 
 - Small real validation dataset (N=14)
 - Simple MLP backbone for the real-pilot classifier
 - Isolated single-sign clips rather than continuous multi-sign gesture streams (directly relevant to Finding 3)
-- Hierarchical policy (MT) requires threshold/prior redesign before small-vocabulary ($K \le 5$) real-data use (Finding 4)
+- Hierarchical policy (MT) requires threshold/prior redesign before small-vocabulary (`K <= 5`) real-data use (Finding 4)
 - BOCPD parameters (`cp_thr`, hazard rate) require recalibration for real-world streams
-- In small-vocabulary ($K \le 5$) applications, MT requires threshold ($\tau$) or minimum specificity ($\text{min\_sp}$) adjustment to prevent prior-induced immediate coarse commitment (as observed in the 5-class real pilot at $\tau=0.50$, whereas $K=10$ synthetic benchmarks at $\tau=0.80$ are mathematically immune).
+- In small-vocabulary (`K <= 5`) applications, MT requires threshold (`tau`) or minimum specificity (`min_sp`) adjustment to prevent prior-induced immediate coarse commitment (as observed in the 5-class real pilot at `tau = 0.50`, whereas `K = 10` synthetic benchmarks at `tau = 0.80` are mathematically immune).
 
 ## Future Work
 
@@ -215,7 +215,6 @@ Bayesian-decision-framework/
 │   └── val_*.png                   # WLASL real-data evaluation & ablation plots
 │
 ├── README.md                       # Main documentation, methods table, & audit notes
-├── SEQUENTIAL_BAYES_DESIGN.md      # Core theoretical design document
 ├── requirements.txt                # Pinned Python dependencies
 ├── pytest.ini                      # Pytest configuration & custom markers
 └── .gitignore                      # Configured to ignore local study guides, caches, & archives
