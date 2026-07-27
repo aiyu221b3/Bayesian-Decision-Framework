@@ -221,19 +221,6 @@ Bayesian-decision-framework/
 └── .gitignore                      # Configured to ignore local study guides, caches, & archives
 ```
 
-### Include
-
-- `src/`: all core library modules and the `test_*.py` suite
-- `results/`: all JSON/CSV reports plus `findings.md`
-- `figures/`: generated plots
-- `README.md`, `SEQUENTIAL_BAYES_DESIGN.md`, `requirements.txt`, `pytest.ini`, `.gitignore`
-
-### Exclude (in `.gitignore`)
-
-- Local `.tex` and `.pdf` study guides and documentation files
-- `__pycache__/`, `.pytest_cache/`, any virtual environment folder
-- Any raw video or probability tray cache files
-
 ### Note on Exploratory Evaluation Modules
 `evaluate_validation.py` and `run_ablation_study.py` are standalone exploratory pilot evaluation scripts that load the classifier and execute inference on the validation probability trays. They are explicitly excluded from pytest's default test collection (`test_*.py` pattern in `pytest.ini`) and are never imported by any supported synthetic benchmark module (`experiments.py` or `test_*.py`).
 
