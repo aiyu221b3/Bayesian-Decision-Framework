@@ -69,10 +69,10 @@ The myopic policy is used as a simple one-step decision baseline rather than a t
 
 | Cost Ratio (`cw/ce`) | Myopic Risk | Empirical DP Approx Risk |
 |---------------------:|------------:|-------------------------:|
-| 0.02 | 0.41 | **0.52** |
-| 0.05 | 0.92 | **0.92** |
-| 0.10 | 1.63 | **0.90** |
-| 0.20 | 2.70 | **0.90** |
+| 0.02 | 0.42 | **0.44** |
+| 0.05 | 0.81 | **0.65** |
+| 0.10 | 1.66 | **0.86** |
+| 0.20 | 3.12 | **1.41** |
 
 ![Stopping frontier: myopic vs. empirical DP across cost ratios](figures/frontier.png)
 
@@ -84,7 +84,7 @@ The myopic policy is used as a simple one-step decision baseline rather than a t
 | M1 static | 0.323 | 0.438 | 27.9 |
 | M2 switch | **0.026** | **0.107** | **16.4** |
 | M3 BOCPD  | 0.134 | 0.267 | 20.2 |
-| MT tree   | N/A | N/A | 14.6 |
+| MT tree   | N/A | 0.220 | 14.6 |
 | M0 raw    | 0.078 | 0.066 | 21.4 |
 
 ![Perseveration: stale re-emission rate by method](figures/perseveration.png)
