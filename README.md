@@ -34,6 +34,8 @@ This repository explores Bayesian sequential decision-making rather than static 
 
 ## Experimental Pipeline
 
+![Bayesian Sequential Decision Framework Flowchart](figures/pipeline_flowchart.png)
+
 ```
 Video
    ↓
