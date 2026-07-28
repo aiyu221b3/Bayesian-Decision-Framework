@@ -67,12 +67,12 @@ The myopic policy is used as a simple one-step decision baseline rather than a t
 
 #### Stopping Frontier: Myopic vs. DP Reference Across Cost Ratios
 
-| Cost Ratio (`cw/ce`) | Myopic Risk | Empirical DP Approx Risk |
-|---------------------:|------------:|-------------------------:|
-| 0.02 | 0.42 | **0.44** |
-| 0.05 | 0.81 | **0.65** |
-| 0.10 | 1.66 | **0.86** |
-| 0.20 | 3.12 | **1.41** |
+| Cost Ratio (`cw/ce`) | Myopic Accuracy | Myopic Latency | Myopic Risk | DP Accuracy | DP Latency | DP Risk |
+|---------------------:|----------------:|---------------:|------------:|------------:|-----------:|--------:|
+| 0.02 | 0.943 | 17.7 | 0.42 | 0.890 | 16.5 | **0.44** |
+| 0.05 | 0.885 | 16.0 | 0.81 | 0.860 | 10.2 | **0.65** |
+| 0.10 | 0.805 | 14.3 | 1.66 | 0.760 | 6.2 | **0.86** |
+| 0.20 | 0.668 | 11.8 | 3.12 | 0.550 | 4.8 | **1.41** |
 
 ![Stopping frontier: myopic vs. empirical DP across cost ratios](figures/frontier.png)
 
