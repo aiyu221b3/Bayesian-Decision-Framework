@@ -174,12 +174,10 @@ This repository is not intended as a state-of-the-art sign-language recognizer. 
 
 ## Future Work
 
-- Transformer/CNN probability generators in place of the MLP backbone
-- Continuous gesture streams (where BOCPD's design assumptions actually hold)
-- Larger real-validation datasets
-- Adaptive stopping thresholds
-- Hierarchical tree threshold/prior redesign informed by Finding 4
-- Calibration-aware Bayesian updates (motivated by the synthetic reliability gap in the 0.25-0.85 confidence band)
+- **Dynamic Policy Optimization (MDP):** The current stopping frontier relies on Empirical Dynamic Programming with frozen hyperparameters. The next iteration frames optimal stopping as a dynamic Markov Decision Process. Reinforcement Learning policies will be trained to autonomously adjust the wait cost (`c_w`), error cost (`c_e`), and switching factors (`rho`) in real-time based on stream volatility during `real_eval`.
+- **Multi-Agent Reinforcement Learning (MARL):** Expanding the framework from isolated decision-making to a competitive game-theoretic environment. Future models will deploy multiple agents on the same evidence stream to evaluate how they dynamically balance threshold confidence against competitor latency to achieve a Nash Equilibrium. 
+- **Continuous Gesture Streams:** Moving beyond isolated single-sign clips (where BOCPD inherently produces false positives due to a lack of genuine transitions) to continuous, multi-sign sequences where adaptive policies can effectively evaluate shifting environments. 
+- **Deep Model Integration:** Swapping the exploratory MLP backbone for Transformer or CNN probability generators to provide richer, more complex uncertainty profiles for the RL agents to navigate.
 
 ## Repository Structure
 
