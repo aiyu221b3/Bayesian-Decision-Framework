@@ -29,7 +29,7 @@ def _probability_vector(values, K, name):
 
 
 class FlatBel:
-    """tempered cat bayes filter. rho=0 static, rho>0 sticky hmm jump."""
+    """tempered bayes filter. rho=0 static, rho>0 sticky hmm jump."""
 
     def __init__(self, K, lam=0.32, rho=0.0, prior=None):
         if K < 2:
