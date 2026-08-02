@@ -1,3 +1,5 @@
+### Links:
+[Devlog #1 🍎](https://medium.com/@ayushibhattacharya88/devlog-1-bayesian-sequential-decision-framework-pt-1-490c5b16657e): Explaining evidence.py and belief.py
 # Bayesian Sequential Decision Framework
 
 A modular framework for online Bayesian inference, changepoint detection, and adaptive stopping policies under uncertainty.
