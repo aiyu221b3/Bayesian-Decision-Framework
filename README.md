@@ -215,9 +215,8 @@ In the baseline real pilot (`K = 5`), the hierarchical policy `MT` had a mean st
 
 In the synthetic headline suite (`src/experiments.py`), the problem uses **10 classes ($K = 10$)**, threshold **$\tau = 0.80$**, and minimum specificity threshold **`min_sp = 0.25`**. Under a uniform prior $b_0(k) = 0.10$, reaching $\tau = 0.80$ requires a coarse node with at least 8 leaves ($8 \times 0.10 = 0.80$). However, an 8-leaf node has specificity:
 
-$$
-\text{sp}(v) = \frac{10 - 8}{10 - 1} = \frac{2}{9} \approx 0.2222
-$$
+$$\text{sp}(v) = \frac{10 - 8}{10 - 1} = \frac{2}{9} \approx 0.2222$$
+
 
 Because $0.2222$ is strictly less than `min_sp = 0.25`, instant frame-0 commitment under a uniform prior is mathematically excluded in the synthetic headline evaluation ($K = 10$), confirming that instant commitment is an artifact of transferring $\tau = 0.50$ and `min_sp = 0.25` to a small-vocabulary ($K = 5$) setting.
 
