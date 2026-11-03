@@ -61,7 +61,7 @@ c_e \left(1 - \max_k b_t(k)\right) \le c_w \iff \max_k b_t(k) \ge 1 - \frac{c_w}
 $$
 
 **4. BOCPD Run-Length Posterior (`M3`)**\
-Rather than leaking belief at a constant rate like `M2`, BOCPD explicitly tracks the "run length" $r_t$—how many frames have elapsed since the last genuine transition—under a constant hazard rate $h \in (0, 1)$ and predictive compatibility $\pi_t^{(r)}$, triggering a belief reset when changepoint mass spikes:
+Rather than leaking belief at a constant rate like `M2`, BOCPD explicitly tracks the "run length" $r_t$; how many frames have elapsed since the last genuine transition under a constant hazard rate $h \in (0, 1)$ and predictive compatibility $\pi_t^{(r)}$, triggering a belief reset when changepoint mass spikes:
 
 $$
 P(r_t = r \mid x_{1:t}) \propto P(r_{t-1} = r - 1 \mid x_{1:t-1}) \, (1 - h) \, \pi_t^{(r-1)} \quad (r > 0)
