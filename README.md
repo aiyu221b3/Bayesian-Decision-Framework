@@ -3,8 +3,8 @@
 A modular framework for online Bayesian inference, changepoint detection, and adaptive stopping policies under uncertainty.
 
 **TL;DR**
-- **What it does:** Wraps any frame-level classifier in a sequential Bayesian decision layer that decides *when* enough evidence has accumulated to emit a prediction thus trading off latency against accuracy rather than waiting for a video clip to end.
-- **Validated synthetic results ($K = 10$, 10 seeds):** Switching HMM belief filtering (`M2`) cuts post-transition perseveration by **92%** over static Bayesian accumulation (`0.026` vs. `0.323`) and beats raw confidence thresholding on boundary latency (`16.4` vs. `21.4` frames), while empirical Dynamic Programming (`DP`) reduces Bayes risk by up to **55%** over myopic stopping.
+- **What it does:** Wraps any frame-level classifier in a sequential Bayesian decision layer that decides *when* enough evidence has accumulated to emit a prediction, thereby trading off latency against accuracy rather than waiting for a video clip to end.
+- **Validated synthetic results ($K = 10$, 10 seeds):** Switching HMM belief filtering (`M2`) cuts post-transition perseveration by **92%** over static Bayesian accumulation (`0.026` vs. `0.323`) and beats raw confidence thresholding on boundary latency (`16.4` vs. `21.4` frames). The empirical Dynamic Programming (`DP`) comparator lowers Bayes risk at the two higher cost ratios in the saved report, by up to **67%** at `cw/ce = 0.20`.
 - **Exploratory real-data pilot (WLASL, $N = 14$):** End-to-end integration works on real MediaPipe + MLP probability streams, though accuracy is low (`0.0%–35.7%`). Diagnostic auditing traced this to three concrete root causes: pre-onset commitment (stopping at frames `0–3.4` before gestures actually begin around frame `28.1`), BOCPD false positives on single-sign clips that lack real transitions, and coarse-node prior saturation at $K = 5$.
 
 ### Links:
@@ -15,7 +15,7 @@ A modular framework for online Bayesian inference, changepoint detection, and ad
 Before you scroll down to the graphs, let us establish one ground rule. This repository evaluates the framework across two completely separate tracks, and I do not mix their numbers:
 
 1. **Synthetic evidence** (headline results): controlled synthetic probability streams across 10 predeclared seeds. This track is fully validated and statistically supported (paired bootstrap, 95% CIs). It exists to verify that the mathematical mechanics actually do what they claim to do under known conditions. See `results/full_synthetic_report.json` for the full breakdown.
-2. **Real WLASL pilot** (exploratory): a small ($N = 14$), independently-audited evaluation on real sign-language video data. The findings here are honest and diagnostic. The full audit trail lives in `results/findings.md`.
+2. **Real WLASL pilot** (exploratory): a small ($N = 14$), internally audited evaluation on real sign-language video data. The findings here are honest and diagnostic. The full audit trail lives in `results/findings.md`.
 
 Numbers from the real pilot are never blended into the synthetic headline claims.
 
@@ -28,26 +28,26 @@ Yet most sequential recognition systems only bother answering one question: *wha
 To do that without welding the decision logic to a specific neural network, the architecture is strictly modular (`Classifier -> probabilities -> Bayesian engine`). You can swap out the upstream classifier tomorrow without touching a single line of the decision layer. Inside that engine, we maintain posterior beliefs over classes as frames arrive, using five stopping policies of increasing sophistication:
 
 - `M0` (**Raw confidence threshold**): The memoryless baseline. If a single frame's raw softmax probability crosses the threshold, it fires. No memory, no patience.
-- `M1` (**Static Bayesian**): Accumulates log-evidence across frames using a tempered log-opinion pool. Great when the world is static; terrible when reality changes mid-stream.
-- `M2` (**Bayesian with switching prior / HMM**): Adds a small probability of regime change at every step; a tiny drop of mathematical amnesia so the model does not stay stubbornly locked into yesterday's sign.
+- `M1` (**Static Bayesian**): Accumulates log-evidence across frames using a tempered log-opinion pool. It is suited to static regimes but can retain stale evidence when the regime changes mid-stream.
+- `M2` (**Bayesian with switching prior / HMM**): Adds a small probability of regime change at every step, reducing the tendency to remain locked onto a previous sign.
 - `M3` (**Bayesian + BOCPD**): Couples belief filtering with Bayesian Online Changepoint Detection to explicitly monitor whether the underlying sign just switched and reset belief when needed.
 - `MT` (**Hierarchical Bayesian inference**): Organizes classes into a coarse-to-fine taxonomy tree. When the evidence is too ambiguous to pick a specific leaf class, it can still commit early to a broader parent category.
 
 ## Method at a Glance
 
-The decision layer operates on **probability trays** which are pre-computed per-frame softmax probability matrices ($T \times K$) exported by an upstream classifier. Why call them trays? Because the upstream classifier serves up a flat grid of discriminative probabilities for every sequence, and the Bayesian engine consumes them one row at a time. (Purists will note that a classifier outputs discriminative posteriors rather than generative likelihoods; we treat them as tempered pseudo-likelihoods to update our state, which I unpack further in the Devlog).
+The decision layer operates on **probability trays**, pre-computed per-frame softmax probability matrices ($T \times K$) exported by an upstream classifier. Here, “trays” denotes a flat grid of discriminative probabilities for every sequence, consumed one row at a time by the Bayesian engine. A classifier outputs discriminative posteriors rather than generative likelihoods; this framework treats them as tempered pseudo-likelihoods to update its state, as discussed further in the Devlog.
 
 Here are the five core formulations driving the engine:
 
 **1. Tempered Recursive Bayes Update (`M1`)**\
-If we naively multiply frame probabilities together, we make the very false assumption that consecutive video frames are independent. Because sensor and pose noise are temporally correlated; if a hand is blurry at frame $t$, it is probably still blurry at frame $t+1$—standard Bayes becomes overconfident ridiculously fast by double-counting overlapping information. We fix this by updating posterior belief $b_t(k)$ over $K$ classes with a tempering exponent $\lambda \in (0, 1]$:
+If we naively multiply frame probabilities together, we assume that consecutive video frames are independent. Sensor and pose noise are temporally correlated; if a hand is blurry at frame $t$, it is probably still blurry at frame $t+1$, so standard Bayes can become overconfident by double-counting overlapping information. This is mitigated by updating posterior belief $b_t(k)$ over $K$ classes with a tempering exponent $\lambda \in (0, 1]$:
 
 $$
 b_t(k) \propto b_{t-1}(k) \, p(x_t \mid k)^\lambda
 $$
 
 **2. Switching Prior / Sticky HMM (`M2`)**\
-Standard Bayes is great until the sign actually changes in real time. Once `M1` builds up hundreds of frames of log-odds for "Rock", incoming evidence for "Paper" cannot easily overturn that mountain of historical bias, a failure mode called *perseveration*. Instead of assuming a sign is static forever, `M2` models reality as a "sticky" Hidden Markov Model. Before fusing frame $t$, we humble the prior by mixing the previous belief with a uniform reset distribution at switching rate $\rho \in (0, 1)$:
+Once `M1` builds up hundreds of frames of log-odds for "Rock", incoming evidence for "Paper" may not easily overturn that accumulated historical bias, a failure mode called *perseveration*. Instead of assuming a sign is static forever, `M2` models reality as a "sticky" Hidden Markov Model. Before fusing frame $t$, it mixes the previous belief with a uniform reset distribution at switching rate $\rho \in (0, 1)$:
 
 $$
 \tilde{b}_t(k) = (1 - \rho) \, b_{t-1}(k) + \frac{\rho}{K}
@@ -61,7 +61,7 @@ c_e \left(1 - \max_k b_t(k)\right) \le c_w \iff \max_k b_t(k) \ge 1 - \frac{c_w}
 $$
 
 **4. BOCPD Run-Length Posterior (`M3`)**\
-Rather than leaking belief at a constant rate like `M2`, BOCPD explicitly tracks the "run length" $r_t$; how many frames have elapsed since the last genuine transition under a constant hazard rate $h \in (0, 1)$ and predictive compatibility $\pi_t^{(r)}$, triggering a belief reset when changepoint mass spikes:
+Rather than leaking belief at a constant rate like `M2`, BOCPD explicitly tracks the "run length" $r_t$: how many frames have elapsed since the last genuine transition under a constant hazard rate $h \in (0, 1)$ and predictive compatibility $\pi_t^{(r)}$. This implementation uses a reset-prior variant: a changepoint evaluates the observation under the new-run predictive $\pi_t^{(0)} = 1/K$, then resets the run-length state when changepoint mass spikes.
 
 $$
 P(r_t = r \mid x_{1:t}) \propto P(r_{t-1} = r - 1 \mid x_{1:t-1}) \, (1 - h) \, \pi_t^{(r-1)} \quad (r > 0)
@@ -100,7 +100,7 @@ Evaluation
 
 ## Results
 
-We evaluated the framework across both our controlled synthetic generator (`evidence.py`, complete with co-articulation ramps and AR(1) correlated noise) and a real WLASL-derived probability dataset. Think of the synthetic suite as the wind tunnel where we verify the aerodynamics, and the real pilot as the bumpy road test where we see what rattles loose.
+We evaluated the framework across both a controlled synthetic generator (`evidence.py`, with co-articulation ramps and AR(1) correlated noise) and a real WLASL-derived probability dataset. The synthetic suite verifies decision-layer mechanics under known conditions; the real pilot tests those mechanics against noisy classifier outputs.
 
 > **Quick Policy Key:** `M0` = Raw confidence threshold | `M1` = Static Bayesian filter | `M2` = Switching HMM filter | `M3` = Bayesian + BOCPD | `MT` = Hierarchical coarse-to-fine tree.
 
@@ -108,17 +108,17 @@ We evaluated the framework across both our controlled synthetic generator (`evid
 
 In the synthetic benchmark, we test five things: basic belief filtering, adaptation across sign boundaries, the latency-accuracy frontier across stopping policies, probability calibration, and expected-utility (Bayes risk) minimization across four cost ratios.
 
-Look at the stopping frontier below first. The myopic policy is a one-step heuristic baseline, not a theoretical optimum: it only asks whether stopping *right now* beats paying $c_w$ for one step, without reasoning about how much cleaner the signal might get five frames from now. To see what foresight buys us, we compare it against an empirical finite-horizon Dynamic Programming (`DP`) reference that actually accounts for the value of future observations. (You will notice `DP` slightly trails myopic at the lowest cost ratio, `cw/ce <= 0.02`; that is a known finite-horizon grid-discretization effect rather than a bug.)
+The myopic policy is a one-step heuristic baseline, not a theoretical optimum: it only asks whether stopping *right now* beats paying $c_w$ for one step, without reasoning about the expected value of future observations. It is compared with an empirical finite-horizon Dynamic Programming (`DP`) approximation. The `DP` comparator is not an optimality guarantee: its finite sample, discretized state grid, and frozen fallback assumptions affect the estimate. In the saved report, it has higher risk at `cw/ce = 0.02` and `0.05`, and lower risk at `0.10` and `0.20`.
 
 #### Stopping Frontier: Myopic vs. DP Reference Across Cost Ratios
-`cw/ce` = ratio of per-frame wait cost ($c_w$) to misclassification error cost ($c_e$); **Risk** = realized Bayes risk $c_w \cdot \text{Latency} + c_e \cdot (1 - \text{Accuracy})$.
+`cw/ce` = ratio of per-frame wait cost ($c_w$) to misclassification error cost ($c_e$); **Risk** = realized Bayes risk $c_w \cdot \text{Latency} + c_e \cdot (1 - \text{Accuracy})$. All values are 10-seed means rounded to four decimal places.
 
 | Cost Ratio (`cw/ce`) | Myopic Accuracy | Myopic Latency | Myopic Risk | DP Accuracy | DP Latency | DP Risk |
 |---------------------:|----------------:|---------------:|------------:|------------:|-----------:|--------:|
-| 0.02 | **0.943** | 17.7 | **0.42** | 0.890 | **16.5** | 0.44 |
-| 0.05 | **0.885** | 16.0 | 0.81 | 0.860 | **10.2** | **0.65** |
-| 0.10 | **0.805** | 14.3 | 1.66 | 0.760 | **6.2** | **0.86** |
-| 0.20 | **0.668** | 11.8 | 3.12 | 0.550 | **4.8** | **1.41** |
+| 0.02 | **0.9430** | 17.7095 | **0.4112** | 0.7810 | **15.1260** | 0.5215 |
+| 0.05 | **0.8850** | 16.0365 | **0.9168** | 0.1600 | **1.5750** | 0.9188 |
+| 0.10 | **0.8055** | 14.3125 | 1.6258 | 0.1050 | **0.0300** | **0.8980** |
+| 0.20 | **0.6685** | 11.8315 | 2.6978 | 0.1050 | **0.0010** | **0.8952** |
 
 ![Stopping frontier: myopic vs. empirical DP across cost ratios](figures/frontier.png)
 
@@ -136,7 +136,7 @@ What happens when a person finishes signing "Rock" and transitions to "Paper"?
 | MT tree   | N/A | 0.220 | **14.6** |
 | M0 raw    | 0.078 | **0.066** | 21.4 |
 
-A reader looking at the table above will immediately ask: *Wait, why does the naive memoryless baseline (`M0 raw`) get a lower sequence error (`0.066`) than your fancy switching HMM (`0.107`)?* Good catch. Because `M0` has zero memory, it never carries historical baggage across a boundary, but it pays for that with a 30% slower boundary reaction time (`21.4` frames vs. `16.4` for `M2`) and 3x worse perseveration (`0.078` vs. `0.026`) when transition frames briefly spike the old class. Meanwhile, `M1 static` does exactly what we feared—it locks onto the first sign, resulting in a massive `32.3%` perseveration rate and sluggish `27.9`-frame boundary delay. `M2 switch` cures that lock-in almost completely (`0.026`), and `MT tree` responds fastest of all (`14.6` frames) because it is allowed to hedge with a coarse parent node when the boundary is still blurry.
+`M0 raw` has lower sequence error (`0.066`) than the switching HMM (`0.107`) because it has zero memory and therefore carries no historical evidence across a boundary. It pays for that with a 30% slower boundary reaction time (`21.4` frames vs. `16.4` for `M2`) and 3x worse perseveration (`0.078` vs. `0.026`) when transition frames briefly spike the old class. `M1 static` can lock onto the first sign, resulting in `32.3%` perseveration and a `27.9`-frame boundary delay. `M2 switch` substantially reduces that lock-in (`0.026`), and `MT tree` responds fastest (`14.6` frames) because it may commit to a coarse parent node when the boundary is still ambiguous.
 
 ![Perseveration: stale re-emission rate by method](figures/perseveration.png)
 
@@ -150,11 +150,11 @@ A reader looking at the table above will immediately ask: *Wait, why does the na
 
 ### Real WLASL Pilot (exploratory, N=14)
 
-Now for the reality check. We hooked the exact same Bayesian engine up to real `.pth` MLP classifier outputs across $N = 14$ validation sequences from WLASL and ran a 4-configuration ablation grid sweeping minimum wait time (`t_min`) and confidence threshold (`tau`).
+The same Bayesian engine was evaluated on real `.pth` MLP classifier outputs across $N = 14$ validation sequences from WLASL using a 4-configuration ablation grid that sweeps minimum wait time (`t_min`) and confidence threshold (`tau`).
 
 #### Real-Data Pilot Ablation Grid (N=14 Validation Sequences)
 
-If you are looking for high benchmark accuracy, you will not find it here: across all 20 policy-configuration combinations, accuracy sits between `0.0%` and `35.7%`, and at $N = 14$ no single policy is statistically superior. What this pilot actually gives us is much more interesting for system design—it exposes *why* textbook decision rules break when handed real, uncurated video clips, which we dissect in the **Key Findings** right below.
+Across all 20 policy-configuration combinations, accuracy ranges from `0.0%` to `35.7%`; at $N = 14$, no single policy is statistically superior. For context, chance accuracy is `20.0%` in this five-class pilot. The pilot is diagnostic rather than a benchmark and identifies how decision rules behave on real, uncurated video clips.
 
 <details>
 <summary><strong>Click to expand the 20-row Real-Data Pilot Ablation Table (N=14)</strong></summary>
@@ -196,14 +196,14 @@ If you are looking for high benchmark accuracy, you will not find it here: acros
 
 ## Key Findings
 
-**1. The plumbing works end-to-end.**
-First, the sanity check: the Bayesian engine ingests real `.pth` classifier probability trays, runs recursive filtering, tracks changepoints, and evaluates hierarchical trees without a single structural crash.
+**1. End-to-end integration runs.**
+The Bayesian engine ingests real `.pth` classifier probability trays, runs recursive filtering, tracks changepoints, and evaluates hierarchical trees without a structural failure.
 
-**2. The policies are jumping the gun before the signer even raises their hands.**
-Why is baseline accuracy stuck around `28.6%`? Look at the clock. Across all 14 real videos, the baseline policies make up their minds and stop between frames `0` and `3.4`. Meanwhile, our diagnostic onset estimates show the actual target gesture does not meaningfully start until around frame `28.1` on average! In real video clips, people spend the first half-second standing still or lifting their arms, during which the MLP classifier confidently outputs biased idle-pose probabilities. Because the Bayesian filter trusts that steady stream of early frames, it crosses the threshold long before the real sign begins. Forcing the model to wait (`t_min=15`, `tau=0.75`) pushes `M2`'s mean stop frame out to `38.3` and bumps accuracy to `35.7%`.
+**2. The policies often commit before the target gesture begins.**
+Across all 14 real videos, the baseline policies stop between frames `0` and `3.4`, while diagnostic onset estimates place meaningful target-gesture onset around frame `28.1` on average. Before the gesture begins, clips may contain idle poses or arm-lifting frames for which the MLP produces biased probabilities. Because the Bayesian filter accumulates this early evidence, it can cross the threshold before the target sign begins. Requiring a minimum wait (`t_min=15`, `tau=0.75`) moves `M2`'s mean stop frame to `38.3` and raises observed accuracy from `28.6%` (4 of 14) to `35.7%` (5 of 14), a one-sequence exploratory difference.
 
 **3. BOCPD is looking for transitions that do not exist in isolated clips.**
-Across all four ablation settings, `55.6%–70.0%` of the extra emissions triggered by BOCPD after the first decision were false positives. Why? Because BOCPD is built to detect regime changes in a *continuous, multi-sign stream*, whereas the WLASL pilot clips are isolated single-sign recordings with one constant label. Handing an isolated clip to a changepoint detector is like hiring a fire lookout to stare at a blank wall, there are no legitimate transitions to find, so any jitter in the classifier's output that trips the detector is guaranteed to be a false alarm.
+Across all four ablation settings, `55.6%–70.0%` of the extra emissions triggered by BOCPD after the first decision were false positives. BOCPD is designed to detect regime changes in a *continuous, multi-sign stream*, whereas the WLASL pilot clips are isolated single-sign recordings with one constant label. In this setting, jitter in the classifier output that triggers the detector is plausibly a noise-driven false alarm rather than evidence of a genuine sign transition.
 
 **4. Why `MT` committed at frame 0 (and why the synthetic benchmark is immune).**
 In the baseline real pilot (`K = 5`), the hierarchical policy `MT` had a mean stop frame of `0.0`—it was making a decision before seeing a single frame of video. When we traced this to its mathematical root, the culprit was simple arithmetic: under a uniform 5-class prior ($0.20$ per class), the 3-leaf coarse parent node `{0,1,4}` starts out at frame 0 with an aggregate belief mass of $3 \times 0.20 = 0.60$ and a specificity of $(5 - 3)/(5 - 1) = 0.50$. Because the pilot used $\tau = 0.50$ and `min_sp = 0.25`, that parent node already satisfied both stopping criteria at initialization! Fortunately, this is impossible in our 10-class synthetic benchmark (expand the proof below if you want to check the math).
@@ -222,8 +222,8 @@ Because $0.2222$ is strictly less than `min_sp = 0.25`, instant frame-0 commitme
 
 </details>
 
-**5. The verification audit caught a sneaky fallback scoring bug.**
-Every policy constructor and mathematical invariant was checked against a spec-driven verification test suite (`11 defect-remediation clauses, 9 preservation requirements` in `src/test_*.py`), which also audited the real-pilot evaluation script (`results/findings.md`). That audit caught a subtle bug: whenever a conservative policy refused to emit a prediction before the video ended (for instance, `M0` at `tau=0.75`, which had a `0%` emission rate), the evaluation script was silently falling back to the classifier's final-frame argmax and crediting `M0` with `64.3%` accuracy for doing nothing. We ripped out that fallback and re-scored all four ablation configurations honestly: if a policy fails to emit, it gets a zero.
+**5. Internal verification identified a fallback scoring bug.**
+Every policy constructor and mathematical invariant was checked against a spec-driven verification test suite (`11 defect-remediation clauses, 9 preservation requirements` in `src/test_*.py`), which also audited the real-pilot evaluation script (`results/findings.md`). That audit identified a bug: whenever a conservative policy refused to emit a prediction before the video ended (for instance, `M0` at `tau=0.75`, which had a `0%` emission rate), the evaluation script fell back to the classifier's final-frame argmax and credited `M0` with `64.3%` accuracy. The fallback was removed and all four ablation configurations were re-scored: if a policy fails to emit, it receives a zero.
 
 ## What This Repository Is (and Isn't)
 
@@ -231,12 +231,12 @@ Let us be completely clear: this repository is **not** trying to be a state-of-t
 
 ## Limitations & Future Work
 
-Because I believe in stating what is broken before someone else points it out, the current limitations of the exploratory real-data setup are straightforward:
+The current limitations of the exploratory real-data setup are straightforward:
 - **Tiny validation sample ($N = 14$)** and a **simple MLP backbone** that produces poorly calibrated frame probabilities during rest poses.
 - **Isolated single-sign clips** rather than continuous multi-sign streams, which deprives BOCPD (`M3`) and switching priors (`M2`) of the actual sign-to-sign transitions they were built to handle (Finding 3).
 - **Small-vocabulary tree calibration ($K \le 5$):** Using `MT` on 5 classes requires raising $\tau$ or `min_sp` so coarse parent nodes do not fire on the uniform prior alone (Finding 4), and BOCPD's hazard rate $h$ and threshold `cp_thr` need recalibration for real sensor noise.
 
-Where does this go next? Right now, our stopping rules rely on frozen hyperparameters, which is a bit rigid for the chaotic real world:
+Future work will address the following limitations of the current stopping rules, which rely on frozen hyperparameters:
 - **Dynamic Policy Optimization (MDP):** Instead of relying on static Empirical Dynamic Programming grids, the next iteration frames optimal stopping as a full Markov Decision Process, training Reinforcement Learning agents to dynamically tune wait cost ($c_w$), error cost ($c_e$), and switching rate ($\rho$) on the fly based on stream volatility.
 - **Multi-Agent Reinforcement Learning (MARL):** Putting multiple decision agents on the exact same evidence stream in a competitive game-theoretic setup, forcing them to balance threshold confidence against a competitor beating them to the punch (finding a Nash Equilibrium between speed and recklessness).
 - **Continuous Gesture Streams & Deep Backbones:** Moving from isolated clips to continuous, multi-sign videos where BOCPD actually has real transitions to catch, and swapping the toy MLP for Transformer or CNN backbones with richer uncertainty profiles.
