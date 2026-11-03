@@ -3,7 +3,7 @@
 A modular framework for online Bayesian inference, changepoint detection, and adaptive stopping policies under uncertainty.
 
 **TL;DR**
-- **What it does:** Wraps any frame-level classifier in a sequential Bayesian decision layer that decides *when* enough evidence has accumulated to emit a prediction—trading off latency against accuracy rather than waiting for a video clip to end.
+- **What it does:** Wraps any frame-level classifier in a sequential Bayesian decision layer that decides *when* enough evidence has accumulated to emit a prediction thus trading off latency against accuracy rather than waiting for a video clip to end.
 - **Validated synthetic results ($K = 10$, 10 seeds):** Switching HMM belief filtering (`M2`) cuts post-transition perseveration by **92%** over static Bayesian accumulation (`0.026` vs. `0.323`) and beats raw confidence thresholding on boundary latency (`16.4` vs. `21.4` frames), while empirical Dynamic Programming (`DP`) reduces Bayes risk by up to **55%** over myopic stopping.
 - **Exploratory real-data pilot (WLASL, $N = 14$):** End-to-end integration works on real MediaPipe + MLP probability streams, though accuracy is low (`0.0%–35.7%`). Diagnostic auditing traced this to three concrete root causes: pre-onset commitment (stopping at frames `0–3.4` before gestures actually begin around frame `28.1`), BOCPD false positives on single-sign clips that lack real transitions, and coarse-node prior saturation at $K = 5$.
 
@@ -15,13 +15,13 @@ A modular framework for online Bayesian inference, changepoint detection, and ad
 Before you scroll down to the graphs, let us establish one ground rule. This repository evaluates the framework across two completely separate tracks, and I do not mix their numbers:
 
 1. **Synthetic evidence** (headline results): controlled synthetic probability streams across 10 predeclared seeds. This track is fully validated and statistically supported (paired bootstrap, 95% CIs). It exists to verify that the mathematical mechanics actually do what they claim to do under known conditions. See `results/full_synthetic_report.json` for the full breakdown.
-2. **Real WLASL pilot** (exploratory): a small ($N = 14$), independently-audited evaluation on real sign-language video data. The findings here are honest and diagnostic, not a polished benchmark meant to impress anyone with high accuracy numbers. The full audit trail lives in `results/findings.md`.
+2. **Real WLASL pilot** (exploratory): a small ($N = 14$), independently-audited evaluation on real sign-language video data. The findings here are honest and diagnostic. The full audit trail lives in `results/findings.md`.
 
 Numbers from the real pilot are never blended into the synthetic headline claims.
 
 ## Motivation & Core Contributions
 
-Imagine you are playing rock, paper, scissors. Your hand does not teleport from rock to paper instantly—you are unfortunately not the Flash. There is a physical transition period where your fingers uncurl, and if you pause a video right at the beginning of that movement, even a human will struggle to tell what sign is coming next. Information in the real world does not arrive all at once; it accumulates frame by frame until a concrete story forms.
+Imagine you are playing rock, paper, scissors. Your hand does not teleport from rock to paper instantly. There is a physical transition period where your fingers uncurl, and if you pause a video right at the beginning of that movement, even a human will struggle to tell what sign is coming next. Information in the real world does not arrive all at once; it accumulates frame by frame until a concrete story forms.
 
 Yet most sequential recognition systems only bother answering one question: *what is the final class once the clip is over?* Real-time systems have a much harder problem to solve: *when do we have enough evidence to actually commit to a decision?* If you decide too early, you guess on transition noise. If you wait until the very end, you are too slow to be useful. Everything in this repository revolves around that tension: turning noisy, frame-by-frame evidence into an evolving belief, and knowing when to stop waiting.
 
@@ -29,25 +29,25 @@ To do that without welding the decision logic to a specific neural network, the 
 
 - `M0` (**Raw confidence threshold**): The memoryless baseline. If a single frame's raw softmax probability crosses the threshold, it fires. No memory, no patience.
 - `M1` (**Static Bayesian**): Accumulates log-evidence across frames using a tempered log-opinion pool. Great when the world is static; terrible when reality changes mid-stream.
-- `M2` (**Bayesian with switching prior / HMM**): Adds a small probability of regime change at every step—a tiny drop of mathematical amnesia so the model does not stay stubbornly locked into yesterday's sign.
+- `M2` (**Bayesian with switching prior / HMM**): Adds a small probability of regime change at every step; a tiny drop of mathematical amnesia so the model does not stay stubbornly locked into yesterday's sign.
 - `M3` (**Bayesian + BOCPD**): Couples belief filtering with Bayesian Online Changepoint Detection to explicitly monitor whether the underlying sign just switched and reset belief when needed.
 - `MT` (**Hierarchical Bayesian inference**): Organizes classes into a coarse-to-fine taxonomy tree. When the evidence is too ambiguous to pick a specific leaf class, it can still commit early to a broader parent category.
 
 ## Method at a Glance
 
-The decision layer operates on **probability trays**—pre-computed per-frame softmax probability matrices ($T \times K$) exported by an upstream classifier. Why call them trays? Because the upstream classifier serves up a flat grid of discriminative probabilities for every sequence, and the Bayesian engine consumes them one row at a time. (Purists will note that a classifier outputs discriminative posteriors rather than generative likelihoods; we treat them as tempered pseudo-likelihoods to update our state, which I unpack further in the Devlog).
+The decision layer operates on **probability trays** which are pre-computed per-frame softmax probability matrices ($T \times K$) exported by an upstream classifier. Why call them trays? Because the upstream classifier serves up a flat grid of discriminative probabilities for every sequence, and the Bayesian engine consumes them one row at a time. (Purists will note that a classifier outputs discriminative posteriors rather than generative likelihoods; we treat them as tempered pseudo-likelihoods to update our state, which I unpack further in the Devlog).
 
 Here are the five core formulations driving the engine:
 
 **1. Tempered Recursive Bayes Update (`M1`)**\
-If we naively multiply frame probabilities together, we make the very false assumption that consecutive video frames are independent. Because sensor and pose noise are temporally correlated—if a hand is blurry at frame $t$, it is probably still blurry at frame $t+1$—standard Bayes becomes overconfident ridiculously fast by double-counting overlapping information. We fix this by updating posterior belief $b_t(k)$ over $K$ classes with a tempering exponent $\lambda \in (0, 1]$:
+If we naively multiply frame probabilities together, we make the very false assumption that consecutive video frames are independent. Because sensor and pose noise are temporally correlated; if a hand is blurry at frame $t$, it is probably still blurry at frame $t+1$—standard Bayes becomes overconfident ridiculously fast by double-counting overlapping information. We fix this by updating posterior belief $b_t(k)$ over $K$ classes with a tempering exponent $\lambda \in (0, 1]$:
 
 $$
 b_t(k) \propto b_{t-1}(k) \, p(x_t \mid k)^\lambda
 $$
 
 **2. Switching Prior / Sticky HMM (`M2`)**\
-Standard Bayes is great until the sign actually changes in real time. Once `M1` builds up hundreds of frames of log-odds for "Rock", incoming evidence for "Paper" cannot easily overturn that mountain of historical bias—a failure mode called *perseveration*. Instead of assuming a sign is static forever, `M2` models reality as a "sticky" Hidden Markov Model. Before fusing frame $t$, we humble the prior by mixing the previous belief with a uniform reset distribution at switching rate $\rho \in (0, 1)$:
+Standard Bayes is great until the sign actually changes in real time. Once `M1` builds up hundreds of frames of log-odds for "Rock", incoming evidence for "Paper" cannot easily overturn that mountain of historical bias, a failure mode called *perseveration*. Instead of assuming a sign is static forever, `M2` models reality as a "sticky" Hidden Markov Model. Before fusing frame $t$, we humble the prior by mixing the previous belief with a uniform reset distribution at switching rate $\rho \in (0, 1)$:
 
 $$
 \tilde{b}_t(k) = (1 - \rho) \, b_{t-1}(k) + \frac{\rho}{K}
@@ -136,7 +136,7 @@ What happens when a person finishes signing "Rock" and transitions to "Paper"?
 | MT tree   | N/A | 0.220 | **14.6** |
 | M0 raw    | 0.078 | **0.066** | 21.4 |
 
-A sharp reader looking at the table above will immediately ask: *Wait, why does the naive memoryless baseline (`M0 raw`) get a lower sequence error (`0.066`) than your fancy switching HMM (`0.107`)?* Good catch. Because `M0` has zero memory, it never carries historical baggage across a boundary, but it pays for that with a 30% slower boundary reaction time (`21.4` frames vs. `16.4` for `M2`) and 3x worse perseveration (`0.078` vs. `0.026`) when transition frames briefly spike the old class. Meanwhile, `M1 static` does exactly what we feared—it locks onto the first sign, resulting in a massive `32.3%` perseveration rate and sluggish `27.9`-frame boundary delay. `M2 switch` cures that lock-in almost completely (`0.026`), and `MT tree` responds fastest of all (`14.6` frames) because it is allowed to hedge with a coarse parent node when the boundary is still blurry.
+A reader looking at the table above will immediately ask: *Wait, why does the naive memoryless baseline (`M0 raw`) get a lower sequence error (`0.066`) than your fancy switching HMM (`0.107`)?* Good catch. Because `M0` has zero memory, it never carries historical baggage across a boundary, but it pays for that with a 30% slower boundary reaction time (`21.4` frames vs. `16.4` for `M2`) and 3x worse perseveration (`0.078` vs. `0.026`) when transition frames briefly spike the old class. Meanwhile, `M1 static` does exactly what we feared—it locks onto the first sign, resulting in a massive `32.3%` perseveration rate and sluggish `27.9`-frame boundary delay. `M2 switch` cures that lock-in almost completely (`0.026`), and `MT tree` responds fastest of all (`14.6` frames) because it is allowed to hedge with a coarse parent node when the boundary is still blurry.
 
 ![Perseveration: stale re-emission rate by method](figures/perseveration.png)
 
